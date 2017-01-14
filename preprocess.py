@@ -14,20 +14,33 @@ from collections import defaultdict, OrderedDict
 from itertools import groupby, izip_longest
 from grammar import *
 
+from pprint import pprint
+
 #----------------------------HELPER FUNCTIONS----------------------------------#
+
+def pprint_all(title, d):
+    print(' - * - * - * BEGIN:', title)
+
+    for i in d:
+        pprint(i)
+    print(' - * - * - *   END:', title)
+
 
 ''' Helper function to parse a MIDI file into its measures and chords '''
 def __parse_midi(data_fn):
     # Parse the MIDI data for separate melody and accompaniment parts.
     midi_data = converter.parse(data_fn)
     # Get melody part, compress into single voice.
-    melody_stream = midi_data[5]     # For Metheny piece, Melody is Part #5.
+    melody_stream = midi_data[0]     # For Metheny piece, Melody is Part #5.
     melody1, melody2 = melody_stream.getElementsByClass(stream.Voice)
     for j in melody2:
         melody1.insert(j.offset, j)
     melody_voice = melody1
 
+    print(len(melody_voice))
+
     for i in melody_voice:
+        print(i)
         if i.quarterLength == 0.0:
             i.quarterLength = 0.25
 
@@ -40,7 +53,7 @@ def __parse_midi(data_fn):
     # the original data. Maybe add more parts, hand-add valid instruments.
     # Should add least add a string part (for sparse solos).
     # Verified are good parts: 0, 1, 6, 7 '''
-    partIndices = [0, 1, 6, 7]
+    partIndices = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
     comp_stream = stream.Voice()
     comp_stream.append([j.flat for i, j in enumerate(midi_data) 
         if i in partIndices])
@@ -52,21 +65,50 @@ def __parse_midi(data_fn):
         full_stream.append(comp_stream[i])
     full_stream.append(melody_voice)
 
+    # print('full_stream')
+    # print(len(full_stream))
+    # for p in full_stream:
+    #     for i in p:
+    #         pprint(i)
+
+
     # Extract solo stream, assuming you know the positions ..ByOffset(i, j).
     # Note that for different instruments (with stream.flat), you NEED to use
     # stream.Part(), not stream.Voice().
-    # Accompanied solo is in range [478, 548)
+    # Accompanied solo is in range [478, 548) TODO: fix the offsets.
     solo_stream = stream.Voice()
     for part in full_stream:
+        # pprint_all('source part:', part)
+
         curr_part = stream.Part()
         curr_part.append(part.getElementsByClass(instrument.Instrument))
         curr_part.append(part.getElementsByClass(tempo.MetronomeMark))
         curr_part.append(part.getElementsByClass(key.KeySignature))
         curr_part.append(part.getElementsByClass(meter.TimeSignature))
-        curr_part.append(part.getElementsByOffset(476, 548, 
+        curr_part.append(part.getElementsByOffset(0, 4048, 
                                                   includeEndBoundary=True))
         cp = curr_part.flat
+
+        # print(' - * - * - * cp:', )
+        # pprint_all('cp:', cp)
+        # pprint_all('1:', part.getElementsByClass(instrument.Instrument))
+        # pprint_all('2:', part.getElementsByClass(tempo.MetronomeMark))
+        # pprint_all('3:', part.getElementsByClass(key.KeySignature))
+        # pprint_all('4:', part.getElementsByClass(meter.TimeSignature))
         solo_stream.insert(cp)
+
+
+
+
+    # print('solo_stream')
+    # for p in solo_stream:
+    #     for i in p:
+    #         pprint(i)
+
+
+    print('Generating melody_stream')
+
+
 
     # Group by measure so you can classify. 
     # Note that measure 0 is for the time signature, metronome, etc. which have
@@ -79,9 +121,14 @@ def __parse_midi(data_fn):
         measures[measureNum] = [n[1] for n in group]
         measureNum += 1
 
+    pprint(measures)
+
+    print('Generating chordStream')
+
     # Get the stream of chords.
     # offsetTuples_chords: group chords by measure number.
     chordStream = solo_stream[0]
+    pprint_all('chordStream', chordStream)
     chordStream.removeByClass(note.Rest)
     chordStream.removeByClass(note.Note)
     offsetTuples_chords = [(int(n.offset / 4), n) for n in chordStream]
@@ -103,6 +150,8 @@ def __parse_midi(data_fn):
     #           the same key (Ab) so could actually just cut out last measure to loop.
     #           Decided: just cut out the last measure. 
     del chords[len(chords) - 1]
+    print(len(chords))
+    print(len(measures))
     assert len(chords) == len(measures)
 
     return measures, chords
